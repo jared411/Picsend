@@ -1,0 +1,11 @@
+const express=require('express'); const multer=require('multer'); const cors=require('cors'); const path=require('path'); const fs=require('fs'); const {v4:uuid}=require('uuid');
+const app=express(); const PORT=process.env.PORT||3000; const PUBLIC_BASE=process.env.PUBLIC_BASE||`http://localhost:${PORT}`;
+const uploadDir=path.join(__dirname,'uploads'); fs.mkdirSync(uploadDir,{recursive:true});
+app.use(cors()); app.use(express.json()); app.use(express.static(path.join(__dirname,'public'))); app.use('/files',express.static(uploadDir));
+const storage=multer.diskStorage({destination:uploadDir,filename:(req,file,cb)=>cb(null,uuid()+path.extname(file.originalname).toLowerCase())});
+const upload=multer({storage,limits:{fileSize:20*1024*1024},fileFilter:(req,file,cb)=>cb(null,file.mimetype.startsWith('image/'))});
+const db=new Map();
+app.post('/api/upload',upload.single('photo'),(req,res)=>{if(!req.file)return res.status(400).json({error:'Please upload an image.'}); const id=uuid(); db.set(id,{file:req.file.filename,name:req.file.originalname,mime:req.file.mimetype,created:Date.now()}); res.json({id,url:`${PUBLIC_BASE}/s/${id}`,download:`${PUBLIC_BASE}/api/download/${id}`,name:req.file.originalname});});
+app.get('/api/download/:id',(req,res)=>{const x=db.get(req.params.id); if(!x)return res.status(404).send('File not found'); res.download(path.join(uploadDir,x.file),x.name);});
+app.get('/s/:id',(req,res)=>{const x=db.get(req.params.id); if(!x)return res.status(404).send('File not found'); res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>PicSend</title><style>body{font-family:system-ui;text-align:center;padding:30px;background:#f7f7fb}img{max-width:95%;max-height:70vh;border-radius:16px}a{display:inline-block;margin-top:20px;padding:14px 22px;background:#5b45e8;color:white;text-decoration:none;border-radius:12px}</style></head><body><h1>PicSend</h1><p>${x.name}</p><img src="/files/${x.file}"><br><a href="/api/download/${req.params.id}">Download original</a></body></html>`);});
+app.listen(PORT,()=>console.log(`PicSend running on ${PUBLIC_BASE}`));
